@@ -18,7 +18,7 @@ npm run build && npm start
 
 ## ランキングデータ
 
-- `data/rankings.json` がゲームで使うランキング(現在217種類)。サーバー側だけで読み込み、数値は結果発表まで送らない。
+- `data/rankings.json` がゲームで使うランキング(現在407種類)。サーバー側だけで読み込み、数値は結果発表まで送らない。
 - 元データは政府統計の [統計ダッシュボード API](https://dashboard.e-stat.go.jp/)(登録不要)。
 - 追加・修正は `scripts/rankingSpec.json` に1行足して `npm run rankings`(= `python scripts/fetch_rankings.py`)。
   - `src`: ダッシュボードの指標名(完全一致)
