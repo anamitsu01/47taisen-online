@@ -155,19 +155,69 @@ function HostSkip({ room, viewerId, act }: { room: ClientRoom; viewerId: string;
 
 // ---------- deck building ----------
 
+/** "〇〇を選びますか?" with the character large in the middle of the screen. */
+function PickConfirm({ pref, busy, onYes, onNo }: { pref: number; busy: boolean; onYes: () => void; onNo: () => void }) {
+  const region = regionOf(pref);
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" onClick={busy ? undefined : onNo}>
+      <div
+        className="tk-pop w-full max-w-sm overflow-hidden rounded-2xl border border-white/15 bg-panel text-center shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="h-2" style={{ background: region.color }} />
+        <div className="relative mx-auto aspect-square w-full max-w-[min(20rem,48vh)]">
+          <div className="absolute inset-[12%] rounded-full blur-3xl" style={{ background: `${region.color}40` }} />
+          <Chara pref={pref} className="relative h-full w-full p-2" />
+        </div>
+        <p className="text-xs font-bold" style={{ color: region.color }}>
+          {region.name}
+        </p>
+        <p className="mb-1 text-3xl font-black">{PREFECTURES[pref]}</p>
+        <p className="mb-5 text-white/70">この都道府県を選びますか?</p>
+        <div className="flex gap-3 px-5 pb-5">
+          <button onClick={onNo} disabled={busy} className="flex-1 rounded-full border border-white/20 py-3 font-bold text-white/80 hover:bg-white/10 disabled:opacity-40">
+            いいえ
+          </button>
+          <button onClick={onYes} disabled={busy} className="flex-1 rounded-full bg-tk-red py-3 font-bold text-white hover:bg-tk-red-bright disabled:opacity-40">
+            {busy ? "…" : "はい"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Tap a prefecture -> confirm dialog -> pick. Shared by both building methods. */
+function usePickConfirm(act: Act, canPick: (pref: number) => boolean) {
+  const [pending, setPending] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const open = pending !== null && canPick(pending) ? pending : null;
+
+  const dialog =
+    open === null ? null : (
+      <PickConfirm
+        pref={open}
+        busy={busy}
+        onNo={() => setPending(null)}
+        onYes={async () => {
+          setBusy(true);
+          const err = await act("game:pick", { pref: open });
+          setBusy(false);
+          setError(err);
+          setPending(null);
+        }}
+      />
+    );
+  return { ask: setPending, dialog, error };
+}
+
 function BuildChoice3({ room, act }: { room: ClientRoom; act: Act }) {
   const me = room.me!;
-  const [selected, setSelected] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const done = me.hand.length >= room.deckSize;
-  const current = selected !== null && me.offer.includes(selected) ? selected : null;
-
-  async function pick() {
-    if (current === null) return;
-    const err = await act("game:pick", { pref: current });
-    setError(err);
-    if (!err) setSelected(null);
-  }
+  const { ask, dialog, error } = usePickConfirm(act, (pref) => me.offer.includes(pref));
 
   return (
     <div className="space-y-4">
@@ -178,35 +228,27 @@ function BuildChoice3({ room, act }: { room: ClientRoom; act: Act }) {
         </h2>
         {!done && me.offer.length === 0 && <p className="text-center text-white/50">候補を準備中…</p>}
         {!done && me.offer.length > 0 && (
-          <>
-            <div key={me.offer.join(",")} className="tk-pop mx-auto grid max-w-2xl grid-cols-3 gap-2 sm:gap-3">
-              {me.offer.map((pref) => (
-                <PrefCard key={pref} pref={pref} size="lg" selected={current === pref} onClick={() => setSelected(pref)} />
-              ))}
-            </div>
-            <div className="mt-4 text-center">
-              <button onClick={pick} disabled={current === null} className={primaryBtn}>
-                {current === null ? "カードを選んでください" : `${PREFECTURES[current]}をデッキに入れる`}
-              </button>
-            </div>
-          </>
+          <div key={me.offer.join(",")} className="tk-pop mx-auto grid max-w-2xl grid-cols-3 gap-2 sm:gap-3">
+            {me.offer.map((pref) => (
+              <PrefCard key={pref} pref={pref} size="lg" onClick={() => ask(pref)} />
+            ))}
+          </div>
         )}
         {error && <p className="mt-2 text-center text-sm text-red-400">{error}</p>}
         <p className="mt-4 text-center text-xs text-white/40">ほかの人が選んだ県は見えません。どんなランキングが出るかもわかりません。</p>
       </Panel>
       <MyDeck hand={me.hand} deckSize={room.deckSize} />
+      {dialog}
     </div>
   );
 }
 
 function BuildDraft({ room, viewerId, act }: { room: ClientRoom; viewerId: string; act: Act }) {
   const me = room.me!;
-  const [selected, setSelected] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const owners = room.owners ?? [];
   const myTurn = room.turn === viewerId;
   const turnName = room.players.find((p) => p.id === room.turn)?.name ?? "";
-  const current = selected !== null && !owners[selected] ? selected : null;
+  const { ask, dialog, error } = usePickConfirm(act, (pref) => myTurn && !owners[pref]);
   const ownerOf = (pref: number) => {
     const id = owners[pref];
     if (!id) return null;
@@ -214,19 +256,12 @@ function BuildDraft({ room, viewerId, act }: { room: ClientRoom; viewerId: strin
     return { name: room.players[i]?.name ?? "", color: PLAYER_COLORS[i % PLAYER_COLORS.length] };
   };
 
-  async function pick() {
-    if (current === null) return;
-    const err = await act("game:pick", { pref: current });
-    setError(err);
-    if (!err) setSelected(null);
-  }
-
   return (
     <div className="space-y-4">
       <Panel>
         <p className="mb-1 text-center text-xs tracking-[0.3em] text-white/50">デッキ作り · ドラフト</p>
         <h2 className={`mb-1 text-center text-xl font-bold ${myTurn ? "text-tk-gold" : ""}`}>
-          {myTurn ? `あなたの番です (${me.hand.length + 1}/${room.deckSize}枚目)` : `${turnName}さんが選んでいます…`}
+          {myTurn ? `あなたの番です。県をタップしてください (${me.hand.length + 1}/${room.deckSize}枚目)` : `${turnName}さんが選んでいます…`}
         </h2>
         <p className="mb-4 text-center text-xs text-white/40">順番に1県ずつ選びます。誰が何を取ったかは全員に見えます。</p>
         <div className="space-y-3">
@@ -244,8 +279,7 @@ function BuildDraft({ room, viewerId, act }: { room: ClientRoom; viewerId: strin
                       pref={pref}
                       size="sm"
                       owner={owner}
-                      selected={current === pref}
-                      onClick={myTurn && !owner ? () => setSelected(pref) : undefined}
+                      onClick={myTurn && !owner ? () => ask(pref) : undefined}
                     />
                   );
                 })}
@@ -253,16 +287,10 @@ function BuildDraft({ room, viewerId, act }: { room: ClientRoom; viewerId: strin
             </div>
           ))}
         </div>
-        {myTurn && (
-          <div className="sticky bottom-3 mt-4 text-center">
-            <button onClick={pick} disabled={current === null} className={`${primaryBtn} shadow-lg shadow-black/50`}>
-              {current === null ? "都道府県を選んでください" : `${PREFECTURES[current]}を取る`}
-            </button>
-          </div>
-        )}
         {error && <p className="mt-2 text-center text-sm text-red-400">{error}</p>}
       </Panel>
       <MyDeck hand={me.hand} deckSize={room.deckSize} />
+      {dialog}
     </div>
   );
 }
@@ -616,6 +644,26 @@ function GameOver({ room, viewerId, act }: { room: ClientRoom; viewerId: string;
           {standings.filter((p) => p.score === top).map((p) => p.name).join("・")}
           <span className="text-tk-gold"> の勝利!</span>
         </h2>
+        {room.finale && room.finale.length > 0 && (
+          <div className="mb-5 flex flex-wrap justify-center gap-4">
+            {room.finale.map((f) => {
+              const seat = room.players.findIndex((p) => p.id === f.playerId);
+              return (
+                <div key={f.playerId} className="flex flex-col items-center">
+                  <div className="relative h-[40vh] max-h-[380px] w-[40vh] max-w-[80vw]">
+                    <div className="absolute inset-[10%] rounded-full bg-tk-gold/25 blur-3xl" />
+                    <Chara pref={f.pref} className="relative h-full w-full drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)]" />
+                  </div>
+                  <p className="text-2xl font-black">{PREFECTURES[f.pref]}</p>
+                  <p className="text-sm text-white/60">
+                    <span style={{ color: PLAYER_COLORS[seat % PLAYER_COLORS.length] }}>{room.players[seat]?.name}</span>
+                    のデッキから
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <ol className="mx-auto max-w-sm space-y-1.5">
           {standings.map((p) => (
             <li key={p.id} className="flex items-center gap-3 rounded-lg bg-white/5 px-4 py-2">

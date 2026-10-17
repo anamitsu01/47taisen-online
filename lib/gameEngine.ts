@@ -73,6 +73,7 @@ export function createRoom(hostId: string, name: string, isTest = false): RoomSt
     rankings: [],
     round: 0,
     results: [],
+    finale: [],
     createdAt: Date.now(),
   };
 }
@@ -152,6 +153,7 @@ export function startGame(room: RoomState, hostId: string): RoomState {
   room.rankings = shuffle(RANKINGS.map((_, i) => i)).slice(0, room.deckSize);
   room.round = 0;
   room.results = [];
+  room.finale = [];
   if (room.buildMode === "choice3") refillOffers(room);
   return room;
 }
@@ -296,10 +298,22 @@ function nextRound(room: RoomState): void {
   for (const p of room.players) p.ready = false;
   if (room.round >= room.deckSize) {
     room.phase = "gameover";
+    room.finale = drawFinale(room);
     return;
   }
   room.round += 1;
   room.stage = "play";
+}
+
+/** One prefecture at random from each winner's deck (every card they played this game). */
+function drawFinale(room: RoomState): RoomState["finale"] {
+  const top = Math.max(...room.players.map((p) => p.score));
+  return room.players
+    .filter((p) => p.score === top)
+    .map((p) => {
+      const deck = room.results.flatMap((r) => r.plays.filter((x) => x.playerId === p.id).map((x) => x.pref));
+      return { playerId: p.id, pref: deck[randInt(deck.length)] };
+    });
 }
 
 /** Host moves the game on for players who are away: a random pick, a random card, or 次へ. */
@@ -369,6 +383,7 @@ export function viewFor(room: RoomState, playerId: string): ClientRoom {
     me: me && playing ? { hand: me.hand, offer: me.offer, choice: me.choice } : null,
     ranking: playing && room.round > 0 ? headOf(currentRanking(room)) : null,
     reveal: showReveal ? { plays: last.plays, values: lastRanking!.values, ranks: ranksOf(lastRanking!) } : null,
+    finale: room.phase === "gameover" ? room.finale : null,
     history:
       room.phase === "gameover"
         ? room.results.map((r) => ({ round: r.round, ranking: headOf(RANKINGS[r.ranking]), plays: r.plays }))

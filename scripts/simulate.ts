@@ -30,6 +30,12 @@ for (const players of [2, 3, 4, 5]) {
       }
       assert.equal(room.results.length, room.deckSize);
       assert(room.players.every((p) => p.hand.length === 0));
+      // Each winner gets one prefecture from the cards they played.
+      const top = Math.max(...room.players.map((p) => p.score));
+      assert.equal(room.finale.length, room.players.filter((p) => p.score === top).length);
+      for (const f of room.finale) {
+        assert(room.results.some((r) => r.plays.some((x) => x.playerId === f.playerId && x.pref === f.pref)));
+      }
       viewFor(room, "host");
       total += Math.max(...room.players.map((p) => p.score));
     }

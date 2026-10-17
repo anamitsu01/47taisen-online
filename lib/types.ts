@@ -63,6 +63,8 @@ export interface RoomState {
   /** 1-based; 0 while building. */
   round: number;
   results: RoundResult[];
+  /** After the game: for each winner, one prefecture drawn at random from their deck. */
+  finale: { playerId: string; pref: number }[];
   createdAt: number;
 }
 
@@ -120,6 +122,8 @@ export interface ClientRoom {
   } | null;
   /** After the game: every round, for the summary. */
   history: { round: number; ranking: RankingHead; plays: Play[] }[] | null;
+  /** After the game: one prefecture from each winner's deck, the same for every viewer. */
+  finale: RoomState["finale"] | null;
 }
 
 /** Entering this room code opens a fresh private test room with bots. */
