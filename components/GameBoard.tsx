@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PREFECTURES, REGIONS, regionOf } from "@/lib/prefectures";
 import type { ClientToServerEvents } from "@/lib/socketEvents";
 import type { ClientPlayer, ClientRoom, Play, RankingHead } from "@/lib/types";
@@ -439,11 +439,14 @@ function ResultStage({ room, viewerId, act }: { room: ClientRoom; viewerId: stri
   const reveal = room.reveal!;
   const [error, setError] = useState<string | null>(null);
   const meDone = room.players.find((p) => p.id === viewerId)?.done;
+  // Play the reveal once per round; someone who already pressed 次へ (e.g. after a reload) skips it.
+  const [showReveal, setShowReveal] = useState(!meDone);
   const waiting = room.players.filter((p) => !p.done).length;
   const last = room.round >= room.totalRounds;
 
   return (
     <div className="space-y-4">
+      {showReveal && <RevealOverlay room={room} ranking={ranking} onClose={() => setShowReveal(false)} />}
       <RankingBanner room={room} ranking={ranking} />
       <Panel title="結果">
         <PlayRows plays={reveal.plays} players={room.players} unit={ranking.unit} />
@@ -459,6 +462,139 @@ function ResultStage({ room, viewerId, act }: { room: ClientRoom; viewerId: stri
         </div>
       </Panel>
       <FullRanking room={room} ranking={ranking} />
+    </div>
+  );
+}
+
+// ---------- reveal show ----------
+
+const FLIP_START_MS = 700;
+const FLIP_EACH_MS = 900;
+const MVP_PAUSE_MS = 900;
+const MVP_SHOW_MS = 4500;
+
+/**
+ * Full-screen reveal: the played cards lie face down in seat order and flip one
+ * by one from the lowest national rank to the highest, then the round MVP (most
+ * points) takes the stage with its character. Tap or スキップ to close early.
+ */
+function RevealOverlay({ room, ranking, onClose }: { room: ClientRoom; ranking: RankingHead; onClose: () => void }) {
+  const plays = room.reveal!.plays;
+  const flipOrder = [...plays].reverse().map((x) => x.playerId);
+  const [flipped, setFlipped] = useState(0);
+  const [stage, setStage] = useState<"flip" | "mvp">("flip");
+  const best = Math.max(...plays.map((x) => x.points));
+  const mvps = best > 0 ? plays.filter((x) => x.points === best) : [];
+
+  useEffect(() => {
+    const timers = flipOrder.map((_, i) => setTimeout(() => setFlipped(i + 1), FLIP_START_MS + i * FLIP_EACH_MS));
+    const flipEnd = FLIP_START_MS + flipOrder.length * FLIP_EACH_MS;
+    if (mvps.length) {
+      timers.push(setTimeout(() => setStage("mvp"), flipEnd + MVP_PAUSE_MS));
+      timers.push(setTimeout(onClose, flipEnd + MVP_PAUSE_MS + MVP_SHOW_MS));
+    } else {
+      timers.push(setTimeout(onClose, flipEnd + 2000));
+    }
+    return () => timers.forEach(clearTimeout);
+    // Runs once per round: the overlay is remounted for each round.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const seat = (playerId: string) => room.players.findIndex((p) => p.id === playerId);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex flex-col items-center justify-center overflow-y-auto bg-black/85 px-3 py-6 backdrop-blur-sm"
+      onClick={stage === "mvp" ? onClose : undefined}
+    >
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        className="absolute right-3 top-3 rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/70 hover:bg-white/10"
+      >
+        スキップ
+      </button>
+
+      <p className="mb-1 text-xs tracking-[0.3em] text-white/50">
+        ROUND {room.round} / {room.totalRounds}
+      </p>
+      <h2 className="mb-5 px-10 text-center text-xl font-black sm:text-2xl">
+        {ranking.title}
+        <span className="text-white/60">都道府県</span>
+      </h2>
+
+      {stage === "flip" ? (
+        <div className="flex w-full max-w-4xl flex-wrap justify-center gap-2 sm:gap-4">
+          {room.players.map((p) => {
+            const play = plays.find((x) => x.playerId === p.id)!;
+            const open = flipOrder.indexOf(p.id) < flipped;
+            const color = PLAYER_COLORS[seat(p.id) % PLAYER_COLORS.length];
+            return (
+              <div key={p.id} className="w-[30%] max-w-[180px] sm:w-[18%]">
+                <p className="mb-1 truncate text-center text-xs font-bold sm:text-sm" style={{ color }}>
+                  {p.name}
+                </p>
+                {open ? (
+                  <div className="tk-flip overflow-hidden rounded-xl border-2 border-white/20 bg-panel">
+                    <div className="h-1.5" style={{ background: regionOf(play.pref).color }} />
+                    <div className="relative aspect-square">
+                      <Chara pref={play.pref} className="absolute inset-0 h-full w-full p-1" />
+                    </div>
+                    <div className="bg-black/40 px-1 py-1.5 text-center">
+                      <p className="truncate text-sm font-bold sm:text-base">{PREFECTURES[play.pref]}</p>
+                      <p className="text-lg font-black text-tk-gold sm:text-2xl">{play.rank}位</p>
+                      <p className="truncate text-[10px] tabular-nums text-white/60 sm:text-xs">{withUnit(play.value, ranking.unit)}</p>
+                    </div>
+                  </div>
+                ) : (
+                  // Same box as the face-up card (stripe + square + caption) so nothing jumps on the flip.
+                  <div className="relative overflow-hidden rounded-xl border-2 border-tk-red/60 bg-gradient-to-br from-tk-red/70 to-[#5c0f1c] shadow-lg">
+                    <div className="invisible">
+                      <div className="h-1.5" />
+                      <div className="aspect-square" />
+                      <div className="px-1 py-1.5 text-center">
+                        <p className="text-sm sm:text-base">-</p>
+                        <p className="text-lg sm:text-2xl">-</p>
+                        <p className="text-[10px] sm:text-xs">-</p>
+                      </div>
+                    </div>
+                    <span className="absolute inset-0 flex items-center justify-center text-center text-sm font-black leading-tight text-white/80 sm:text-lg">
+                      都道府県
+                      <br />
+                      大戦
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="tk-pop flex flex-col items-center">
+          <p className="mb-2 text-lg font-black tracking-[0.4em] text-tk-gold sm:text-2xl">ラウンドMVP</p>
+          <div className="flex flex-wrap justify-center gap-4">
+            {mvps.map((m) => (
+              <div key={m.playerId} className="flex flex-col items-center">
+                <div className="relative h-[46vh] max-h-[460px] w-[46vh] max-w-[90vw]">
+                  <div className="absolute inset-[8%] rounded-full bg-tk-gold/25 blur-3xl" />
+                  <Chara pref={m.pref} className="relative h-full w-full drop-shadow-[0_10px_30px_rgba(0,0,0,0.6)]" />
+                </div>
+                <p className="text-3xl font-black sm:text-4xl">{PREFECTURES[m.pref]}</p>
+                <p className="mt-1 text-white/70">
+                  全国{m.rank}位 ·{" "}
+                  <span style={{ color: PLAYER_COLORS[seat(m.playerId) % PLAYER_COLORS.length] }}>
+                    {room.players[seat(m.playerId)]?.name}
+                  </span>
+                </p>
+                <p className="mt-1 text-5xl font-black text-tk-gold sm:text-6xl">+{m.points}点</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-xs text-white/40">タップで閉じる</p>
+        </div>
+      )}
     </div>
   );
 }
