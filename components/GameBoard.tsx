@@ -33,7 +33,21 @@ function Panel({ title, children, className = "" }: { title?: React.ReactNode; c
   );
 }
 
-/** A prefecture card: region colour stripe on top, name in the middle. */
+/** The prefecture's character illustration (public/chara/01.webp = 北海道 … 47.webp = 沖縄県). */
+function Chara({ pref, className = "" }: { pref: number; className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- small static files, no optimisation needed
+    <img
+      src={`/chara/${String(pref + 1).padStart(2, "0")}.webp`}
+      alt=""
+      draggable={false}
+      decoding="async"
+      className={`pointer-events-none select-none object-contain ${className}`}
+    />
+  );
+}
+
+/** A prefecture card: region colour stripe on top, name in the middle. Large cards also show the character. */
 function PrefCard({
   pref,
   selected = false,
@@ -52,7 +66,7 @@ function PrefCard({
   const region = regionOf(pref);
   const name = PREFECTURES[pref];
   const sizing =
-    size === "lg" ? "h-32 text-2xl" : size === "sm" ? "h-14 text-xs" : "h-20 text-base";
+    size === "lg" ? "h-56 text-xl sm:h-64 sm:text-2xl" : size === "sm" ? "h-14 text-xs" : "h-20 text-base";
   return (
     <button
       type="button"
@@ -67,7 +81,16 @@ function PrefCard({
       } disabled:cursor-default`}
     >
       <span className="h-1.5 w-full shrink-0" style={{ background: region.color, opacity: owner ? 0.35 : 1 }} />
-      <span className="flex flex-1 items-center justify-center px-1 leading-tight">{name}</span>
+      {size === "lg" ? (
+        <>
+          <span className="relative min-h-0 flex-1">
+            <Chara pref={pref} className="absolute inset-0 h-full w-full p-1" />
+          </span>
+          <span className="shrink-0 bg-black/40 px-1 py-1.5 leading-tight">{name}</span>
+        </>
+      ) : (
+        <span className="flex flex-1 items-center justify-center px-1 leading-tight">{name}</span>
+      )}
       {owner && (
         <span className="mb-1 truncate px-1 text-[10px] font-semibold" style={{ color: owner.color }}>
           {owner.name}
@@ -156,7 +179,7 @@ function BuildChoice3({ room, act }: { room: ClientRoom; act: Act }) {
         {!done && me.offer.length === 0 && <p className="text-center text-white/50">候補を準備中…</p>}
         {!done && me.offer.length > 0 && (
           <>
-            <div key={me.offer.join(",")} className="tk-pop mx-auto grid max-w-xl grid-cols-3 gap-3">
+            <div key={me.offer.join(",")} className="tk-pop mx-auto grid max-w-2xl grid-cols-3 gap-2 sm:gap-3">
               {me.offer.map((pref) => (
                 <PrefCard key={pref} pref={pref} size="lg" selected={current === pref} onClick={() => setSelected(pref)} />
               ))}
@@ -295,7 +318,7 @@ function PlayStage({ room, act }: { room: ClientRoom; act: Act }) {
         {me.choice !== null ? (
           <div className="text-center">
             <p className="mb-3 text-white/60">あなたが出すカード</p>
-            <div className="mx-auto mb-4 w-40">
+            <div className="mx-auto mb-4 w-44 sm:w-52">
               <PrefCard pref={me.choice} size="lg" selected />
             </div>
             <p className="mb-3 text-sm text-white/50">ほかの人を待っています… (あと{waiting}人)</p>
@@ -344,19 +367,25 @@ function PlayRows({ plays, players, unit }: { plays: Play[]; players: ClientPlay
         return (
           <div
             key={x.playerId}
-            className="tk-flip flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+            className="tk-flip flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-2 sm:gap-3 sm:px-3"
             style={{ animationDelay: `${i * 0.35}s` }}
           >
-            <span className="w-12 shrink-0 whitespace-nowrap text-center text-lg font-black text-white/80">{x.rank}位</span>
-            <span className="h-8 w-1 shrink-0 rounded" style={{ background: regionOf(x.pref).color }} />
+            <span className="w-10 shrink-0 whitespace-nowrap text-center font-black text-white/80 sm:w-12 sm:text-lg">{x.rank}位</span>
+            <span
+              className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-b-4 bg-white/5 sm:h-20 sm:w-20"
+              style={{ borderColor: regionOf(x.pref).color }}
+            >
+              <Chara pref={x.pref} className="h-full w-full" />
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="font-bold">{PREFECTURES[x.pref]}</p>
+              <p className="whitespace-nowrap font-bold sm:text-lg">{PREFECTURES[x.pref]}</p>
               <p className="truncate text-xs" style={{ color: PLAYER_COLORS[idx % PLAYER_COLORS.length] }}>
                 {players[idx]?.name}
               </p>
+              <p className="truncate text-xs tabular-nums text-white/60 sm:hidden">{withUnit(x.value, unit)}</p>
             </div>
-            <span className="text-right text-sm tabular-nums text-white/70">{withUnit(x.value, unit)}</span>
-            <span className={`w-14 text-right text-lg font-black tabular-nums ${x.points > 0 ? "text-tk-gold" : "text-white/30"}`}>
+            <span className="hidden text-right text-sm tabular-nums text-white/70 sm:block">{withUnit(x.value, unit)}</span>
+            <span className={`w-12 shrink-0 text-right text-lg font-black tabular-nums sm:w-14 ${x.points > 0 ? "text-tk-gold" : "text-white/30"}`}>
               +{x.points}
             </span>
           </div>

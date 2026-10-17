@@ -30,3 +30,8 @@ npm run build && npm start
 
 Next.js + Socket.IO のカスタムサーバー(`server.ts`)。部屋はメモリ上に保持。ゲームロジックは `lib/gameEngine.ts`。
 Dockerfile あり(Railway でそのまま動く)。
+
+## キャラクター画像
+
+`public/chara/01.webp`(北海道)〜`47.webp`(沖縄県)。3択の候補カード・提出したカード・結果画面に表示。
+元のイラストを差し替えたら `python scripts/prepare_chara.py <イラストのフォルダ>` で作り直す(背景の市松模様・白・黒は自動で透過)。1枚だけなら `... <フォルダ> akita` のように名前を付ける。
