@@ -1,5 +1,6 @@
 // Server-side only: the values must not reach a client before the round's reveal.
-import data from "../data/rankings.json";
+import dashboard from "../data/rankings.json";
+import estat from "../data/rankings_estat.json";
 
 export interface Ranking {
   title: string;
@@ -14,7 +15,8 @@ export interface Ranking {
   values: number[];
 }
 
-export const RANKINGS: Ranking[] = data as Ranking[];
+/** Statistics dashboard rankings (scripts/fetch_rankings.py) plus e-Stat API ones (scripts/fetch_estat.py). */
+export const RANKINGS: Ranking[] = [...(dashboard as Ranking[]), ...(estat as Ranking[])];
 
 /** National rank of every prefecture; equal values share a rank (1, 2, 2, 4 …). */
 export function ranksOf(r: Ranking): number[] {

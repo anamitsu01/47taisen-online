@@ -8,7 +8,8 @@
     "start": "cross-env NODE_ENV=production tsx server.ts",
     "lint": "eslint",
     "simulate": "tsx scripts/simulate.ts",
-    "rankings": "python scripts/fetch_rankings.py"
+    "rankings": "python scripts/fetch_rankings.py",
+    "rankings:estat": "python scripts/fetch_estat.py"
   },
   "dependencies": {
     "next": "16.3.5",
